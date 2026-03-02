@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class VaccinationPage extends StatefulWidget {
   const VaccinationPage({super.key});
@@ -10,23 +11,8 @@ class VaccinationPage extends StatefulWidget {
 }
 
 class _VaccinationPageState extends State<VaccinationPage> {
-  Set<int> _completedVaccinations = {};
-  static const String _prefsKey = 'completed_vaccinations';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCompletedVaccinations();
-  }
-
-  Future<void> _loadCompletedVaccinations() async {
-    final prefs = await SharedPreferences.getInstance();
-    final completedList =
-        prefs.getStringList(_prefsKey)?.map(int.parse).toList() ?? [];
-    setState(() {
-      _completedVaccinations = completedList.toSet();
-    });
-  }
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static const List<Map<String, String>> vaccinations = [
     {
@@ -97,10 +83,12 @@ class _VaccinationPageState extends State<VaccinationPage> {
     },
   ];
 
+  // Opens SMS app so the patient can text a family member or themselves a reminder
   void sendSMS(BuildContext context, String message) async {
     final Uri smsUri = Uri(
       scheme: 'sms',
-      path: '7892942557', // Replace with the patient's phone number
+      // Leaving path empty opens the default SMS app to let the user pick the contact
+      path: '',
       queryParameters: {'body': message},
     );
     try {
@@ -110,174 +98,250 @@ class _VaccinationPageState extends State<VaccinationPage> {
         throw 'Could not launch SMS app';
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Unable to send SMS.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Unable to open SMS app.'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios,
-            color: Colors.white,
-          ), // Changed to white
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Vaccination Guide',
-          style: TextStyle(color: Colors.white), // Changed to white
-        ),
-        backgroundColor: Colors.black, // Changed to black
-        elevation: 0,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: ListView.builder(
-          itemCount: vaccinations.length,
-          itemBuilder: (context, index) {
-            final v = vaccinations[index];
-            final isCompleted = _completedVaccinations.contains(index);
+    final theme = Theme.of(context);
+    final user = _auth.currentUser;
 
-            return Card(
-              margin: const EdgeInsets.symmetric(vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              elevation: 2,
-              color: isCompleted ? Colors.grey.shade100 : Colors.white,
-              child: ExpansionTile(
-                leading: CircleAvatar(
-                  backgroundColor: isCompleted ? Colors.green : Colors.black,
-                  child: Icon(
-                    isCompleted ? Icons.check : Icons.vaccines,
-                    color: Colors.white,
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text("Please log in to view your records.")),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'My Vaccine Tracker',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: theme.colorScheme.primary,
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          // StreamBuilder listens to Firestore and updates the UI instantly if the doctor makes a change
+          child: StreamBuilder<DocumentSnapshot>(
+            stream: _firestore.collection('users').doc(user.uid).snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Center(
+                  child: CircularProgressIndicator(
+                    color: theme.colorScheme.primary,
                   ),
-                ),
-                title: Text(
-                  '${v['name']} (${v['month']})',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade900,
-                    decoration: isCompleted ? TextDecoration.lineThrough : null,
-                  ),
-                ),
-                subtitle: Text(
-                  'Tap for more info',
-                  style: TextStyle(
-                    color: Colors.blue.shade900,
-                    decoration: isCompleted ? TextDecoration.lineThrough : null,
-                  ),
-                ),
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(15),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          spreadRadius: 2,
-                          blurRadius: 5,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        RichText(
-                          text: TextSpan(
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.blue.shade900,
-                            ),
-                            children: [
-                              const TextSpan(
-                                text: "Description: ",
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              TextSpan(text: v['description']),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        RichText(
-                          text: TextSpan(
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.blue.shade900,
-                            ),
-                            children: [
-                              const TextSpan(
-                                text: "Cause: ",
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              TextSpan(text: v['cause']),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 5),
-                        RichText(
-                          text: TextSpan(
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.blue.shade900,
-                            ),
-                            children: [
-                              const TextSpan(
-                                text: "Prevention: ",
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              TextSpan(text: v['prevention']),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        Center(
-                          child: ElevatedButton.icon(
-                            onPressed: () async {
-                              final msg =
-                                  'Reminder: ${v['name']} is scheduled for ${v['month']}.';
-                              sendSMS(context, msg);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Reminder sent successfully!'),
+                );
+              }
+
+              if (snapshot.hasError) {
+                return const Center(child: Text("Error loading records."));
+              }
+
+              // Extract the completed vaccines from the Firestore document safely
+              Set<int> completedVaccinations = {};
+              if (snapshot.hasData && snapshot.data!.exists) {
+                final data = snapshot.data!.data() as Map<String, dynamic>;
+                if (data.containsKey('completedVaccinations')) {
+                  final List<dynamic> savedData = data['completedVaccinations'];
+                  completedVaccinations.addAll(savedData.map((e) => e as int));
+                }
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(16.0),
+                physics: const BouncingScrollPhysics(),
+                itemCount: vaccinations.length,
+                itemBuilder: (context, index) {
+                  final v = vaccinations[index];
+                  final isCompleted = completedVaccinations.contains(index);
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color:
+                            isCompleted
+                                ? Colors.green.withValues(alpha: 0.4)
+                                : theme.colorScheme.primary.withValues(
+                                  alpha: 0.1,
                                 ),
-                              );
-                            },
-                            icon: const Icon(Icons.alarm),
-                            label: Text(
-                              'Remind Me',
-                              style: TextStyle(color: Colors.orange[900]),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange.shade100,
-                              foregroundColor: Colors.orange[900],
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 10,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                            ),
+                        width: isCompleted ? 2 : 1,
+                      ),
+                    ),
+                    elevation: 0,
+                    color:
+                        isCompleted
+                            ? Colors.green.withValues(alpha: 0.05)
+                            : theme.colorScheme.surface,
+                    child: Theme(
+                      data: Theme.of(
+                        context,
+                      ).copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        tilePadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        // Read-only indicator for the patient
+                        leading: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color:
+                                isCompleted
+                                    ? Colors.green
+                                    : theme.colorScheme.secondary.withValues(
+                                      alpha: 0.2,
+                                    ),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isCompleted
+                                ? Icons.check_rounded
+                                : Icons.vaccines_outlined,
+                            color:
+                                isCompleted
+                                    ? Colors.white
+                                    : theme.colorScheme.primary,
                           ),
                         ),
-                      ],
+                        title: Text(
+                          v['name']!,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color:
+                                isCompleted
+                                    ? Colors.green.shade700
+                                    : theme.colorScheme.primary,
+                            decoration:
+                                isCompleted ? TextDecoration.lineThrough : null,
+                          ),
+                        ),
+                        subtitle: Text(
+                          isCompleted
+                              ? 'Administered by Provider'
+                              : v['month']!,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color:
+                                isCompleted
+                                    ? Colors.green.shade600
+                                    : Colors.black54,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(16),
+                                bottomRight: Radius.circular(16),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                _buildInfoRow(
+                                  theme,
+                                  "Description",
+                                  v['description']!,
+                                ),
+                                const SizedBox(height: 12),
+                                _buildInfoRow(theme, "Cause", v['cause']!),
+                                const SizedBox(height: 12),
+                                _buildInfoRow(
+                                  theme,
+                                  "Prevention",
+                                  v['prevention']!,
+                                ),
+
+                                // Only show the reminder button if it is NOT completed yet
+                                if (!isCompleted) ...[
+                                  const SizedBox(height: 24),
+                                  ElevatedButton.icon(
+                                    onPressed: () {
+                                      final msg =
+                                          'Health Reminder: It is time to schedule the ${v['name']} vaccination (${v['month']}).';
+                                      sendSMS(context, msg);
+                                    },
+                                    icon: const Icon(
+                                      Icons.notifications_active_outlined,
+                                      size: 20,
+                                    ),
+                                    label: const Text(
+                                      'Draft SMS Reminder',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: theme
+                                          .colorScheme
+                                          .secondary
+                                          .withValues(alpha: 0.3),
+                                      foregroundColor:
+                                          theme.colorScheme.primary,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          },
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildInfoRow(ThemeData theme, String title, String content) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          content,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: Colors.black87,
+            height: 1.4,
+          ),
+        ),
+      ],
     );
   }
 }

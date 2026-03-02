@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:maternalhealthcare/doctor_side/auth/profile.dart';
 import 'appointments_screen.dart';
 import 'patient_dashboard.dart';
-import 'package:maternalhealthcare/blockchain/bc_service.dart';
 
 class DoctorHomeScreen extends StatefulWidget {
   const DoctorHomeScreen({super.key});
@@ -28,45 +27,79 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _widgetOptions.elementAt(_selectedIndex),
+    final theme = Theme.of(context);
 
-      // ⬇️ Floating Action Button to navigate to blockchain patient page
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.black,
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const PatientPage()),
-          );
-        },
-        child: const Icon(Icons.add, color: Colors.white),
+    return Scaffold(
+      // Added AnimatedSwitcher for a premium, smooth transition between tabs
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: _widgetOptions.elementAt(_selectedIndex),
       ),
 
-      bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: Colors.black,
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.grid_view_outlined, color: Colors.white),
-            activeIcon: Icon(Icons.grid_view_rounded, color: Colors.white),
-            label: 'Patients',
+      // Premium Bottom Navigation Bar
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          boxShadow: [
+            BoxShadow(
+              color: theme.colorScheme.secondary.withOpacity(0.3),
+              blurRadius: 15,
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          backgroundColor: Colors.transparent, // Handled by container
+          elevation: 0,
+          items: const <BottomNavigationBarItem>[
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.grid_view_outlined),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.grid_view_rounded),
+              ),
+              label: 'Patients',
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.calendar_month_outlined),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.calendar_month_rounded),
+              ),
+              label: 'Appointments',
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.person_outline),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4.0),
+                child: Icon(Icons.person_rounded),
+              ),
+              label: 'Profile',
+            ),
+          ],
+          currentIndex: _selectedIndex,
+          selectedItemColor: theme.colorScheme.primary,
+          unselectedItemColor: Colors.black45,
+          selectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today_outlined, color: Colors.white),
-            activeIcon: Icon(Icons.calendar_today_rounded, color: Colors.white),
-            label: 'Appointments',
+          unselectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline, color: Colors.white),
-            activeIcon: Icon(Icons.person_rounded, color: Colors.white),
-            label: 'Profile',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.white,
-        unselectedItemColor: Colors.grey[400],
-        onTap: _onItemTapped,
-        type: BottomNavigationBarType.fixed,
+          onTap: _onItemTapped,
+          type: BottomNavigationBarType.fixed,
+        ),
       ),
     );
   }

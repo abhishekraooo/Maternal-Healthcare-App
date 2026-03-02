@@ -1,16 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-
-// A simple data class for a chat message
-class ChatMessage {
-  final String text;
-  final bool isUser;
-
-  ChatMessage({required this.text, required this.isUser});
-}
+import 'package:provider/provider.dart';
+import 'package:maternalhealthcare/patient_side/provider/patient_provider.dart';
 
 class MedicalChatbotPage extends StatefulWidget {
   const MedicalChatbotPage({super.key});
@@ -20,40 +13,80 @@ class MedicalChatbotPage extends StatefulWidget {
 }
 
 class _MedicalChatbotPageState extends State<MedicalChatbotPage> {
-  // --- Credentials & Config ---
   final String _apiKey = dotenv.env['GEMINI_API_KEY']!;
   final String _apiUrl =
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent";
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent";
 
-  // --- State Variables ---
   final TextEditingController _controller = TextEditingController();
-  final List<ChatMessage> _messages = [];
+  final ScrollController _scrollController = ScrollController();
+
+  List<Map<String, dynamic>> _messages = [];
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _messages.add(
-      ChatMessage(
-        text:
-            "Hello! I am your personal medical assistant. How can I help you today?",
-        isUser: false,
-      ),
-    );
+    _loadCachedChat();
+  }
+
+  void _loadCachedChat() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<PatientDataProvider>(context, listen: false);
+      if (provider.cachedChatHistory.isNotEmpty) {
+        setState(() {
+          // Deep copy to avoid direct state mutation issues
+          _messages = List<Map<String, dynamic>>.from(
+            provider.cachedChatHistory,
+          );
+        });
+        _scrollToBottom();
+      } else {
+        // Initial greeting if no history exists
+        _addMessage(
+          "Hello! I am your maternal healthcare assistant. You can ask me about pregnancy symptoms, infant care, diet, or general wellness. How can I support you today?",
+          false,
+        );
+      }
+    });
+  }
+
+  void _addMessage(String text, bool isUser) {
+    setState(() {
+      _messages.add({'text': text, 'isUser': isUser});
+    });
+
+    if (mounted) {
+      Provider.of<PatientDataProvider>(
+        context,
+        listen: false,
+      ).saveChatHistory(_messages);
+    }
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Future<void> _sendMessage() async {
     final String userMessage = _controller.text.trim();
-    if (userMessage.isEmpty) {
-      return;
-    }
-
-    setState(() {
-      _messages.add(ChatMessage(text: userMessage, isUser: true));
-      _isLoading = true;
-    });
+    if (userMessage.isEmpty) return;
 
     _controller.clear();
+    _addMessage(userMessage, true);
+
+    setState(() {
+      _isLoading = true;
+    });
+    _scrollToBottom();
 
     try {
       final response = await http.post(
@@ -64,19 +97,19 @@ class _MedicalChatbotPageState extends State<MedicalChatbotPage> {
             "parts": [
               {
                 "text":
-                    "You are a helpful and compassionate medical assistant chatbot. "
-                    "Your purpose is to provide general medical information and support in a clear, easy-to-understand manner. "
-                    "You are not a doctor. "
-                    "** provide remedies to the problem **"
-                    "*Strictly limit your response to be between 100 and 150 words.* "
-                    "IMPORTANT: You MUST end every single response with the following disclaimer, exactly as written, on a new line: "
-                    "'Disclaimer: I am an AI assistant and not a medical professional. Please consult a qualified healthcare provider for any medical advice, diagnosis, or treatment.'",
+                    "You are MediBot, a highly compassionate and knowledgeable maternal healthcare AI assistant. "
+                    "Your expertise is strictly focused on pregnancy, postpartum care, fetal development, and infant wellness. "
+                    "Respond in plain, highly readable text (avoid complex markdown like asterisks or hash symbols). "
+                    "Keep responses concise (100-150 words), structured with clear line breaks, and provide practical, safe remedies. "
+                    "IMPORTANT: You MUST end every single response with this exact disclaimer on a new line: "
+                    "\n\nDisclaimer: I am an AI assistant and not a medical professional. Please consult a qualified healthcare provider for medical advice.",
               },
             ],
           },
-          "contents": _buildConversationHistory(userMessage),
+          "contents": _buildConversationHistory(),
           "generationConfig": {
-            "temperature": 0.0, // Makes the output deterministic
+            "temperature":
+                0.2, // Slightly creative but highly grounded in medical fact
           },
         }),
       );
@@ -85,108 +118,203 @@ class _MedicalChatbotPageState extends State<MedicalChatbotPage> {
         final decodedResponse = jsonDecode(response.body);
         final botResponse =
             decodedResponse['candidates'][0]['content']['parts'][0]['text'];
-
-        setState(() {
-          _messages.add(ChatMessage(text: botResponse, isUser: false));
-        });
+        _addMessage(botResponse.trim(), false);
       } else {
-        _showError(
-          "Failed to get response from AI. Status code: ${response.statusCode}\nBody: ${response.body}",
+        _addMessage(
+          "System Error: Unable to connect to medical database at this time.",
+          false,
         );
       }
     } catch (e) {
-      _showError("An error occurred: $e");
+      _addMessage(
+        "Network Error: Please check your connection and try again.",
+        false,
+      );
     } finally {
       setState(() {
         _isLoading = false;
       });
+      _scrollToBottom();
     }
   }
 
-  List<Map<String, dynamic>> _buildConversationHistory(String currentMessage) {
-    final List<Map<String, dynamic>> contents = [];
-    contents.add({
-      "role": "user",
-      "parts": [
-        {"text": currentMessage},
-      ],
-    });
-    return contents;
-  }
+  // Maps the local chat history into the exact format Gemini requires to maintain context
+  List<Map<String, dynamic>> _buildConversationHistory() {
+    List<Map<String, dynamic>> history = [];
+    for (var msg in _messages) {
+      // Skip the initial hardcoded greeting so it doesn't confuse the AI
+      if (msg['text'].startsWith('Hello! I am your maternal')) continue;
 
-  void _showError(String message) {
-    setState(() {
-      _messages.add(ChatMessage(text: "Error: $message", isUser: false));
-    });
+      history.add({
+        "role": msg['isUser'] ? "user" : "model",
+        "parts": [
+          {"text": msg['text']},
+        ],
+      });
+    }
+    return history;
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("MediBot"),
-        backgroundColor: const Color.fromARGB(255, 1, 19, 17),
-        foregroundColor: Colors.white,
-        titleTextStyle: GoogleFonts.quicksand(
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
+        title: Row(
+          children: [
+            Icon(Icons.health_and_safety, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            const Text("Ask AI", style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
         ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16.0),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                return _buildMessageBubble(message);
-              },
-            ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: theme.colorScheme.primary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_sweep_outlined),
+            tooltip: 'Clear Chat',
+            onPressed: () {
+              setState(() {
+                _messages.clear();
+              });
+              Provider.of<PatientDataProvider>(
+                context,
+                listen: false,
+              ).clearChatHistory();
+              _loadCachedChat(); // Reloads the initial greeting
+            },
           ),
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8.0),
-              child: LinearProgressIndicator(
-                color: Color.fromARGB(255, 9, 14, 13),
-              ),
-            ),
-          _buildInputArea(),
+          const SizedBox(width: 8),
         ],
       ),
-    );
-  }
-
-  Widget _buildMessageBubble(ChatMessage message) {
-    return Align(
-      alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5.0),
-        padding: const EdgeInsets.all(12.0),
-        decoration: BoxDecoration(
-          color: message.isUser ? Colors.teal : Colors.grey[200],
-          borderRadius: BorderRadius.circular(15.0),
-        ),
-        child: SelectableText(
-          message.text,
-          style: TextStyle(
-            color: message.isUser ? Colors.white : Colors.black87,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 800),
+          child: Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16.0),
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) {
+                    final message = _messages[index];
+                    return _buildMessageBubble(
+                      theme,
+                      message['text'],
+                      message['isUser'],
+                    );
+                  },
+                ),
+              ),
+              if (_isLoading)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24.0,
+                    vertical: 8.0,
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.secondary.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'AI is typing...',
+                            style: TextStyle(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              _buildInputArea(theme),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildInputArea() {
+  Widget _buildMessageBubble(ThemeData theme, String text, bool isUser) {
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12.0),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
+        decoration: BoxDecoration(
+          color: isUser ? theme.colorScheme.primary : theme.colorScheme.surface,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: Radius.circular(
+              isUser ? 20 : 4,
+            ), // Sharp corner acting as a speech tail
+            bottomRight: Radius.circular(isUser ? 4 : 20),
+          ),
+          border:
+              isUser
+                  ? null
+                  : Border.all(
+                    color: theme.colorScheme.secondary.withOpacity(0.5),
+                  ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 5,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: SelectableText(
+          text,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: isUser ? theme.colorScheme.surface : Colors.black87,
+            height: 1.4,
+            fontSize: 15,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputArea(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.all(8.0),
+      padding: EdgeInsets.only(
+        left: 16.0,
+        right: 16.0,
+        top: 12.0,
+        bottom: 12.0 + MediaQuery.of(context).padding.bottom,
+      ),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        boxShadow: const [
+        color: theme.colorScheme.surface,
+        boxShadow: [
           BoxShadow(
-            offset: Offset(0, -1),
-            blurRadius: 3,
-            color: Colors.black12,
+            offset: const Offset(0, -2),
+            blurRadius: 10,
+            color: theme.colorScheme.secondary.withOpacity(0.2),
           ),
         ],
       ),
@@ -195,18 +323,34 @@ class _MedicalChatbotPageState extends State<MedicalChatbotPage> {
           Expanded(
             child: TextField(
               controller: _controller,
-              decoration: const InputDecoration.collapsed(
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
                 hintText: "Ask a medical question...",
+                hintStyle: TextStyle(color: Colors.black38),
+                filled: true,
+                fillColor: theme.colorScheme.secondary.withOpacity(0.15),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
               ),
-              onSubmitted: (_) => _sendMessage(),
+              onSubmitted: (_) => _isLoading ? null : _sendMessage(),
             ),
           ),
-          IconButton(
-            icon: const Icon(
-              Icons.send,
-              color: Color.fromARGB(255, 14, 16, 16),
+          const SizedBox(width: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary,
+              shape: BoxShape.circle,
             ),
-            onPressed: _isLoading ? null : _sendMessage,
+            child: IconButton(
+              icon: Icon(Icons.send_rounded, color: theme.colorScheme.surface),
+              onPressed: _isLoading ? null : _sendMessage,
+            ),
           ),
         ],
       ),

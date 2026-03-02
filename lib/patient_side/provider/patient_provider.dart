@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 // --- Data Models ---
-
 class Doctor {
   final String id;
   final String fullName;
@@ -32,7 +31,9 @@ class PatientDataProvider with ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  // --- Private State ---
+  // ==========================================
+  // ORIGINAL STATE: DOCTORS, VITALS, FETAL DATA
+  // ==========================================
   bool _isLoadingDoctors = false;
   List<Doctor> _doctors = [];
   bool _isVitalsLoading = false;
@@ -40,7 +41,6 @@ class PatientDataProvider with ChangeNotifier {
   bool _isFetalDataLoading = false;
   List<FetalData> _fetalData = [];
 
-  // --- Getters to expose state to the UI ---
   bool get isLoadingDoctors => _isLoadingDoctors;
   List<Doctor> get doctors => _doctors;
   bool get isVitalsLoading => _isVitalsLoading;
@@ -48,20 +48,18 @@ class PatientDataProvider with ChangeNotifier {
   bool get isFetalDataLoading => _isFetalDataLoading;
   List<FetalData> get fetalData => _fetalData;
 
-  // ** FIX: The constructor is now empty. **
-  // We no longer fetch data automatically. The UI will trigger it.
   PatientDataProvider();
 
-  /// Fetches the list of doctors from the Firestore 'doctors' collection for the onboarding screen.
   Future<void> fetchDoctors() async {
-    // Prevent refetching if already loaded or currently loading
     if (_isLoadingDoctors || _doctors.isNotEmpty) return;
-
     _isLoadingDoctors = true;
     notifyListeners();
-
     try {
-      final snapshot = await _firestore.collection('doctors').get();
+      final snapshot =
+          await _firestore
+              .collection('users')
+              .where('role', isEqualTo: 'doctor')
+              .get();
       _doctors = snapshot.docs.map((doc) => Doctor.fromFirestore(doc)).toList();
     } catch (e) {
       debugPrint("Error fetching doctors: $e");
@@ -72,16 +70,13 @@ class PatientDataProvider with ChangeNotifier {
     }
   }
 
-  /// Fetches the latest vitals data for the current patient from Firestore.
   Future<void> fetchVitals() async {
     final user = _auth.currentUser;
     if (user == null) return;
-
     _isVitalsLoading = true;
     notifyListeners();
 
     try {
-      // Fetch the latest blood pressure reading
       final bpSnapshot =
           await _firestore
               .collection('users')
@@ -92,7 +87,6 @@ class PatientDataProvider with ChangeNotifier {
               .limit(1)
               .get();
 
-      // Fetch the latest heart rate reading
       final hrSnapshot =
           await _firestore
               .collection('users')
@@ -128,16 +122,13 @@ class PatientDataProvider with ChangeNotifier {
     }
   }
 
-  /// Fetches the latest fetal data for the current patient from Firestore.
   Future<void> fetchFetalData() async {
     final user = _auth.currentUser;
     if (user == null) return;
-
     _isFetalDataLoading = true;
     notifyListeners();
 
     try {
-      // Fetch the latest Fetal Heart Rate reading
       final fhrSnapshot =
           await _firestore
               .collection('users')
@@ -152,7 +143,6 @@ class PatientDataProvider with ChangeNotifier {
           fhrSnapshot.docs.isNotEmpty
               ? fhrSnapshot.docs.first['value']
               : '-- bpm';
-
       _fetalData = [FetalData(name: 'FHR', value: fhrValue)];
     } catch (e) {
       debugPrint("Error fetching fetal data: $e");
@@ -163,14 +153,11 @@ class PatientDataProvider with ChangeNotifier {
     }
   }
 
-  /// Updates the heart rate vital locally and saves the new reading to Firestore.
   void updateHeartRate(double averageBpm) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
     final newBpmValue = '${averageBpm.toStringAsFixed(0)} bpm';
-
-    // Update local state immediately for a responsive UI
     int index = _vitals.indexWhere((vital) => vital.name == 'Heart Rate');
     if (index != -1) {
       _vitals[index] = Vital(name: 'Heart Rate', value: newBpmValue);
@@ -179,7 +166,6 @@ class PatientDataProvider with ChangeNotifier {
     }
     notifyListeners();
 
-    // Persist the new reading to Firestore in the background
     try {
       await _firestore
           .collection('users')
@@ -192,7 +178,146 @@ class PatientDataProvider with ChangeNotifier {
           });
     } catch (e) {
       debugPrint("Error saving heart rate to Firestore: $e");
-      // Optionally, handle the error, e.g., show a snackbar
     }
+  }
+
+  // ==========================================
+  // CACHED FEATURE: PRESCRIPTION AI
+  // ==========================================
+  String _cachedPrescriptionText = '';
+  Map<String, dynamic>? _cachedPrescriptionAnalysis;
+
+  String get cachedPrescriptionText => _cachedPrescriptionText;
+  Map<String, dynamic>? get cachedPrescriptionAnalysis =>
+      _cachedPrescriptionAnalysis;
+
+  void savePrescriptionCache(String text, Map<String, dynamic> analysis) {
+    _cachedPrescriptionText = text;
+    _cachedPrescriptionAnalysis = analysis;
+    notifyListeners();
+  }
+
+  // ==========================================
+  // CACHED FEATURE: DIET GUIDE
+  // ==========================================
+  List<dynamic> _cachedDietSuggestions = [];
+  String _cachedDietMonth = '';
+  String _cachedDietWeight = '';
+
+  List<dynamic> get cachedDietSuggestions => _cachedDietSuggestions;
+  String get cachedDietMonth => _cachedDietMonth;
+  String get cachedDietWeight => _cachedDietWeight;
+
+  void saveDietCache(List<dynamic> suggestions, String month, String weight) {
+    _cachedDietSuggestions = suggestions;
+    _cachedDietMonth = month;
+    _cachedDietWeight = weight;
+    notifyListeners();
+  }
+
+  // ==========================================
+  // CACHED FEATURE: DUE DATE CALCULATOR
+  // ==========================================
+  String _cachedLmpDate = '';
+  DateTime? _cachedDueDate;
+
+  String get cachedLmpDate => _cachedLmpDate;
+  DateTime? get cachedDueDate => _cachedDueDate;
+
+  void saveDueDateCache(String lmpDate, DateTime? dueDate) {
+    _cachedLmpDate = lmpDate;
+    _cachedDueDate = dueDate;
+    notifyListeners();
+  }
+
+  // ==========================================
+  // CACHED FEATURE: VACCINATION PAGE
+  // ==========================================
+  Set<int> _completedVaccinations = {};
+  Set<int> get completedVaccinations => _completedVaccinations;
+
+  void toggleVaccination(int index) {
+    if (_completedVaccinations.contains(index)) {
+      _completedVaccinations.remove(index);
+    } else {
+      _completedVaccinations.add(index);
+    }
+    notifyListeners();
+  }
+
+  // ==========================================
+  // CACHED FEATURE: OVULATION TRACKER
+  // ==========================================
+  DateTime? _cachedOvulationLmpDate;
+  int _cachedCycleLength = 28;
+
+  DateTime? get cachedOvulationLmpDate => _cachedOvulationLmpDate;
+  int get cachedCycleLength => _cachedCycleLength;
+
+  void saveOvulationCache(DateTime? lmpDate, int cycleLength) {
+    _cachedOvulationLmpDate = lmpDate;
+    _cachedCycleLength = cycleLength;
+    notifyListeners();
+  }
+
+  // ==========================================
+  // CACHED FEATURE: GOVT SCHEMES
+  // ==========================================
+  String? _cachedGovtOption;
+  int? _cachedGovtMonth;
+  String? _cachedGovtResource;
+
+  String? get cachedGovtOption => _cachedGovtOption;
+  int? get cachedGovtMonth => _cachedGovtMonth;
+  String? get cachedGovtResource => _cachedGovtResource;
+
+  void saveGovtSchemesCache(String? option, int? month, String? resource) {
+    _cachedGovtOption = option;
+    _cachedGovtMonth = month;
+    _cachedGovtResource = resource;
+    notifyListeners();
+  }
+
+  // ==========================================
+  // CACHED FEATURE: MEDICAL CHATBOT
+  // ==========================================
+  List<Map<String, dynamic>> _cachedChatHistory = [];
+
+  List<Map<String, dynamic>> get cachedChatHistory => _cachedChatHistory;
+
+  void saveChatHistory(List<Map<String, dynamic>> history) {
+    _cachedChatHistory = history;
+    notifyListeners();
+  }
+
+  void clearChatHistory() {
+    _cachedChatHistory.clear();
+    notifyListeners();
+  }
+
+  // ==========================================
+  // GLOBAL LOGOUT / CLEAR CACHE
+  // ==========================================
+  void clearAllFeatureCaches() {
+    _cachedPrescriptionText = '';
+    _cachedPrescriptionAnalysis = null;
+
+    _cachedDietSuggestions = [];
+    _cachedDietMonth = '';
+    _cachedDietWeight = '';
+
+    _cachedLmpDate = '';
+    _cachedDueDate = null;
+
+    _completedVaccinations.clear();
+
+    _cachedOvulationLmpDate = null;
+    _cachedCycleLength = 28;
+
+    _cachedGovtOption = null;
+    _cachedGovtMonth = null;
+    _cachedGovtResource = null;
+
+    notifyListeners();
   }
 }

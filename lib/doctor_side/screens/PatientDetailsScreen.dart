@@ -1,150 +1,420 @@
-import 'dart:io';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:maternalhealthcare/doctor_side/screens/vaccine_marker.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-// Add this import
+import 'package:url_launcher/url_launcher.dart';
 
 class PatientDetailScreen extends StatelessWidget {
   final dynamic patient;
 
   const PatientDetailScreen({super.key, required this.patient});
 
-  // Ask for permissions (IMPROVED VERSION)
-  Future<bool> _askPermissions() async {
-    if (Platform.isAndroid) {
-      final androidInfo = await DeviceInfoPlugin().androidInfo;
-      PermissionStatus status;
-      // For Android 13 (API 33) and above, request specific media permissions
-      if (androidInfo.version.sdkInt >= 33) {
-        status = await Permission.photos.request();
-      } else {
-        // For older versions, request storage permission
-        status = await Permission.storage.request();
-      }
-      return status.isGranted;
-    } else if (Platform.isIOS) {
-      // On iOS, Permission.photos is the correct one to use
-      return await Permission.photos.request().isGranted;
-    }
-    return true; // For other platforms
-  }
-
-  // Upload prescription (image only)
-  Future<void> _uploadPhoto(BuildContext context) async {
-    final supabase = Supabase.instance.client;
-
-    // Check permissions before proceeding
-    final hasPermission = await _askPermissions();
-    if (!hasPermission) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("❌ Permission denied. Please allow access."),
-          ),
-        );
-      }
-      return;
-    }
-
-    // Pick image file
-    final result = await FilePicker.platform.pickFiles(type: FileType.image);
-    if (result == null || result.files.isEmpty) {
-      print("❌ No file selected");
-      return;
-    }
-
-    final file = File(result.files.single.path!);
-    final ext = result.files.single.extension ?? "jpg";
-
-    // Create a unique file name using patient ID and a timestamp
-    final patientId =
-        patient is Map && patient.containsKey('id')
-            ? patient['id']
-            : 'unknown_patient';
-    final fileName =
-        "${patientId}_${DateTime.now().millisecondsSinceEpoch}.$ext";
-
-    // Define the path inside the 'prescription_documents' bucket
-    final filePath = "prescription/$fileName";
+  // --- Opens the common Google Drive link ---
+  Future<void> _openGoogleDrive(BuildContext context) async {
+    const String driveUrl =
+        'https://drive.google.com/drive/folders/1pYqLCPpm0uLf7f4awI9KAdiMpBKmlK6i?usp=drive_link';
+    final Uri url = Uri.parse(driveUrl);
 
     try {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("📤 Uploading prescription..."),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-
-      await supabase.storage
-          .from('prescription_documents')
-          .upload(
-            filePath,
-            file,
-            fileOptions: const FileOptions(upsert: false),
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Could not launch Google Drive. Please check the link.",
+              ),
+              backgroundColor: Colors.red,
+            ),
           );
-
-      print("✅ Upload success: $filePath");
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("✅ Prescription uploaded successfully")),
-        );
-      }
-    } on StorageException catch (e) {
-      print("❌ Upload failed: ${e.message}");
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("❌ Upload failed: ${e.message}")),
-        );
+        }
       }
     } catch (e) {
-      print("❌ An unknown error occurred: $e");
+      debugPrint("Error opening drive: $e");
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("❌ An unknown error occurred: $e")),
+          SnackBar(
+            content: const Text("Failed to open documents folder."),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
         );
       }
     }
   }
 
-  // Update the vaccine marking handler
   void _handleVaccineMarking(BuildContext context) {
+    // 1. Extract the ID safely
+    String patientId = 'unknown_patient';
+    try {
+      patientId = patient.id ?? 'unknown_patient';
+    } catch (_) {
+      if (patient is Map && patient.containsKey('id')) {
+        patientId = patient['id'];
+      }
+    }
+
+    // 2. Extract the phone number safely
+    String phoneNumber = 'N/A';
+    try {
+      phoneNumber = patient.phoneNumber ?? 'N/A';
+    } catch (_) {
+      if (patient is Map && patient.containsKey('phoneNumber')) {
+        phoneNumber = patient['phoneNumber'];
+      }
+    }
+
+    // 3. Navigate with the required data!
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const VaccineMarkerScreen()),
+      MaterialPageRoute(
+        builder:
+            (context) => VaccineMarkerScreen(
+              patientId: patientId,
+              patientPhone: phoneNumber,
+            ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final patientName =
-        (patient is Map && patient.containsKey('name'))
-            ? patient['name']
-            : patient.toString();
+    final theme = Theme.of(context);
+
+    // Safely extract ALL properties, including the new vitals
+    String patientName = 'Unknown Patient';
+    String phoneNumber = 'N/A';
+    String? avatarPath;
+    String dateOfBirth = 'Not Provided';
+    String weightKg = '--';
+
+    try {
+      patientName = patient.fullName ?? patient.name ?? 'Unknown Patient';
+      phoneNumber = patient.phoneNumber ?? 'N/A';
+      avatarPath = patient.avatar;
+      dateOfBirth = patient.dateOfBirth ?? 'Not Provided';
+      weightKg = patient.weightKg ?? '--';
+    } catch (_) {
+      if (patient is Map) {
+        patientName =
+            patient['fullName'] ?? patient['name'] ?? 'Unknown Patient';
+        phoneNumber = patient['phoneNumber'] ?? 'N/A';
+        avatarPath = patient['avatar'];
+        dateOfBirth = patient['dateOfBirth'] ?? 'Not Provided';
+        weightKg = patient['weightKg']?.toString() ?? '--';
+      } else {
+        patientName = patient.toString();
+      }
+    }
+
+    final String initial =
+        patientName.isNotEmpty && patientName != 'Unknown Patient'
+            ? patientName[0].toUpperCase()
+            : '?';
+
+    final bool hasAvatar = avatarPath != null && avatarPath.isNotEmpty;
 
     return Scaffold(
-      appBar: AppBar(title: Text("Patient: $patientName")),
+      appBar: AppBar(
+        title: const Text(
+          'Patient Record',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: theme.colorScheme.primary,
+        centerTitle: false,
+      ),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton.icon(
-              icon: const Icon(Icons.upload_file),
-              label: const Text("Upload Prescription"),
-              onPressed: () => _uploadPhoto(context),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Premium Patient Header Card
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: theme.colorScheme.secondary.withValues(
+                          alpha: 0.15,
+                        ),
+                        blurRadius: 15,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: theme.colorScheme.primary.withValues(
+                              alpha: 0.2,
+                            ),
+                            width: 3,
+                          ),
+                        ),
+                        child: CircleAvatar(
+                          radius: 36,
+                          backgroundColor: theme.colorScheme.secondary
+                              .withValues(alpha: 0.2),
+                          backgroundImage:
+                              hasAvatar ? AssetImage(avatarPath!) : null,
+                          child:
+                              !hasAvatar
+                                  ? Text(
+                                    initial,
+                                    style: TextStyle(
+                                      color: theme.colorScheme.primary,
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  )
+                                  : null,
+                        ),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              patientName,
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              phoneNumber,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: Colors.black54,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.secondary.withValues(
+                                  alpha: 0.2,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'Active Patient',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // --- NEW: Patient Vitals Section ---
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildVitalCard(
+                        theme,
+                        'Date of Birth',
+                        dateOfBirth,
+                        Icons.cake_outlined,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildVitalCard(
+                        theme,
+                        'Weight',
+                        weightKg == '--' || weightKg.isEmpty
+                            ? 'Not logged'
+                            : '$weightKg kg',
+                        Icons.monitor_weight_outlined,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 40),
+
+                Text(
+                  'Clinical Actions',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Access Shared Drive Card
+                _buildActionCard(
+                  theme: theme,
+                  title: 'Patient Documents',
+                  subtitle:
+                      'Access the shared Google Drive database to view or upload prescriptions and ultrasound reports.',
+                  icon: Icons.add_to_drive_rounded,
+                  isHighlighted: true,
+                  onTap: () => _openGoogleDrive(context),
+                ),
+                const SizedBox(height: 16),
+
+                // Vaccine Marker Card
+                _buildActionCard(
+                  theme: theme,
+                  title: 'Vaccine Marker',
+                  subtitle:
+                      'Update and monitor the patient\'s maternal immunization schedule stored in Firebase.',
+                  icon: Icons.vaccines_rounded,
+                  onTap: () => _handleVaccineMarking(context),
+                ),
+              ],
             ),
-            const SizedBox(height: 20), // Spacing between buttons
-            ElevatedButton.icon(
-              icon: const Icon(Icons.vaccines),
-              label: const Text("Vaccine Marker"),
-              onPressed: () => _handleVaccineMarking(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- NEW: Helper widget for the Vitals row ---
+  Widget _buildVitalCard(
+    ThemeData theme,
+    String title,
+    String value,
+    IconData icon,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondary.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.secondary.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: theme.colorScheme.primary, size: 24),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
             ),
-          ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              color: theme.colorScheme.primary,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper widget for premium action cards
+  Widget _buildActionCard({
+    required ThemeData theme,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+    bool isHighlighted = false,
+  }) {
+    return Card(
+      elevation: isHighlighted ? 4 : 0,
+      shadowColor:
+          isHighlighted
+              ? theme.colorScheme.primary.withValues(alpha: 0.3)
+              : null,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color:
+              isHighlighted
+                  ? theme.colorScheme.primary.withValues(alpha: 0.5)
+                  : theme.colorScheme.secondary.withValues(alpha: 0.5),
+          width: isHighlighted ? 2 : 1,
+        ),
+      ),
+      color:
+          isHighlighted
+              ? theme.colorScheme.surface
+              : theme.colorScheme.secondary.withValues(alpha: 0.05),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color:
+                      isHighlighted
+                          ? theme.colorScheme.primary.withValues(alpha: 0.1)
+                          : theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 32, color: theme.colorScheme.primary),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: Colors.black87,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Align(
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

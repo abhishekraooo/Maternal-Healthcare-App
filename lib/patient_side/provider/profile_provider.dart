@@ -9,6 +9,7 @@ class PatientProfile {
   final String dateOfBirth;
   final String weightKg;
   final String doctorName;
+  final String avatar; // ADDED: Avatar field
 
   PatientProfile({
     required this.fullName,
@@ -16,6 +17,7 @@ class PatientProfile {
     required this.dateOfBirth,
     required this.weightKg,
     required this.doctorName,
+    required this.avatar, // ADDED: Avatar parameter
   });
 }
 
@@ -53,18 +55,25 @@ class ProfileProvider with ChangeNotifier {
       }
       final userData = userDoc.data()!;
 
-      // --- THE DEFINITIVE FIX IS HERE ---
+      // 2. Safely get the doctor's name from the 'assignedDoctors' array
+      String doctorName = 'Not Assigned';
 
-      // 2. Safely get the doctor's name
-      String doctorName = 'Not Assigned'; // Default value
-      // Check if the 'consultingDoctorId' field exists AND is not null
-      if (userData.containsKey('consultingDoctorId') &&
-          userData['consultingDoctorId'] != null) {
-        final doctorId = userData['consultingDoctorId'];
+      // Check if the 'assignedDoctors' list exists and has at least one doctor
+      if (userData.containsKey('assignedDoctors') &&
+          userData['assignedDoctors'] is List &&
+          (userData['assignedDoctors'] as List).isNotEmpty) {
+        // Get the first doctor in the list (their Primary Care Physician)
+        final doctorId = (userData['assignedDoctors'] as List).first;
+
         final doctorDoc =
-            await _firestore.collection('doctors').doc(doctorId).get();
+            await _firestore.collection('users').doc(doctorId).get();
+
         if (doctorDoc.exists && doctorDoc.data() != null) {
-          doctorName = doctorDoc.data()!['fullName'] ?? 'N/A';
+          // Check for 'fullName' or 'name' just to be safe
+          doctorName =
+              doctorDoc.data()!['fullName'] ??
+              doctorDoc.data()!['name'] ??
+              'N/A';
         }
       }
 
@@ -72,19 +81,27 @@ class ProfileProvider with ChangeNotifier {
       String formattedDob = 'Not Provided';
       if (userData.containsKey('dateOfBirth') &&
           userData['dateOfBirth'] != null) {
-        final dobTimestamp = userData['dateOfBirth'] as Timestamp;
-        final dob = dobTimestamp.toDate();
-        formattedDob =
-            "${dob.year}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}";
+        // Handle both String and Timestamp formats just in case
+        if (userData['dateOfBirth'] is Timestamp) {
+          final dobTimestamp = userData['dateOfBirth'] as Timestamp;
+          final dob = dobTimestamp.toDate();
+          formattedDob =
+              "${dob.year}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}";
+        } else {
+          formattedDob = userData['dateOfBirth'].toString();
+        }
       }
 
       // 4. Build the profile with safe fallbacks for every field
       _patientProfile = PatientProfile(
-        fullName: userData['fullName'] ?? 'No Name Provided',
+        // Look for 'name' first (from our new onboarding), then fallback to 'fullName'
+        fullName:
+            userData['name'] ?? userData['fullName'] ?? 'No Name Provided',
         phoneNumber: userData['phoneNumber'] ?? 'No Phone Provided',
         dateOfBirth: formattedDob,
-        weightKg: (userData['weightKg'] ?? 0).toString(),
+        weightKg: (userData['weightKg'] ?? '--').toString(),
         doctorName: doctorName,
+        avatar: userData['avatar'] ?? '', // Extract the avatar path
       );
     } catch (e) {
       _errorMessage = "Failed to load profile. Please try again.";

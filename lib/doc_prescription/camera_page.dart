@@ -10,25 +10,31 @@ class CameraPage extends StatefulWidget {
   _CameraPageState createState() => _CameraPageState();
 }
 
-class _CameraPageState extends State<CameraPage> {
+class _CameraPageState extends State<CameraPage>
+    with SingleTickerProviderStateMixin {
   late CameraController _controller;
-  Future<void>? _initializeControllerFuture; // Make nullable
+  Future<void>? _initializeControllerFuture;
   bool _isCameraReady = false;
   final ImagePicker _picker = ImagePicker();
 
-  // Add these class variables inside _CameraPageState
   bool _isFocusing = false;
   double _focusX = 0.5;
   double _focusY = 0.5;
-
-  // Add this variable with other class variables
   bool _isTorchOn = false;
+
+  // Added for a subtle shutter button animation
+  late AnimationController _animationController;
 
   @override
   void initState() {
     super.initState();
-    _initializeControllerFuture =
-        _initializeCamera(); // Assign future immediately
+    _initializeControllerFuture = _initializeCamera();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+      lowerBound: 0.9,
+      upperBound: 1.0,
+    )..value = 1.0;
   }
 
   Future<void> _initializeCamera() async {
@@ -40,7 +46,7 @@ class _CameraPageState extends State<CameraPage> {
         enableAudio: false,
       );
 
-      await _controller.initialize(); // Wait for initialization
+      await _controller.initialize();
 
       if (mounted) {
         setState(() {
@@ -65,6 +71,9 @@ class _CameraPageState extends State<CameraPage> {
     }
 
     try {
+      _animationController.reverse().then(
+        (_) => _animationController.forward(),
+      );
       await _initializeControllerFuture;
 
       final XFile image = await _controller.takePicture();
@@ -133,7 +142,6 @@ class _CameraPageState extends State<CameraPage> {
     }
   }
 
-  // Add this new method to handle focus
   Future<void> _onTapToFocus(
     TapDownDetails details,
     BoxConstraints constraints,
@@ -154,7 +162,6 @@ class _CameraPageState extends State<CameraPage> {
       await _controller.setFocusPoint(Offset(x, y));
       await _controller.setExposurePoint(Offset(x, y));
 
-      // Reset focusing state after a delay
       await Future.delayed(const Duration(seconds: 2));
     } catch (e) {
       debugPrint('Error setting focus: $e');
@@ -167,8 +174,8 @@ class _CameraPageState extends State<CameraPage> {
     }
   }
 
-  // Add this widget to show focus indicator
   Widget _buildFocusIndicator() {
+    final theme = Theme.of(context);
     return AnimatedOpacity(
       opacity: _isFocusing ? 1.0 : 0.0,
       duration: const Duration(milliseconds: 300),
@@ -177,19 +184,26 @@ class _CameraPageState extends State<CameraPage> {
         width: 80,
         alignment: Alignment(_focusX * 2 - 1, _focusY * 2 - 1),
         child: Container(
-          height: 40,
-          width: 40,
+          height: 60,
+          width: 60,
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.white, width: 2),
-            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: theme.colorScheme.secondary, width: 2),
+            borderRadius: BorderRadius.circular(
+              8,
+            ), // Square brackets for scanner feel
+          ),
+          child: Center(
+            child: Icon(
+              Icons.add,
+              color: theme.colorScheme.secondary,
+              size: 24,
+            ),
           ),
         ),
       ),
     );
   }
 
-  // Modify the camera preview part in the build method
-  // Replace the existing CameraPreview with this:
   Widget _buildCameraPreview() {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -211,7 +225,6 @@ class _CameraPageState extends State<CameraPage> {
     );
   }
 
-  // Add this method to toggle torch
   Future<void> _toggleTorch() async {
     try {
       if (_isCameraReady) {
@@ -237,149 +250,150 @@ class _CameraPageState extends State<CameraPage> {
   @override
   void dispose() {
     _controller.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.black, // Keep black behind the camera preview
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white, size: 28),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
       body: Column(
         children: [
-          // Status bar spacing with back button
+          Expanded(
+            child: FutureBuilder<void>(
+              future: _initializeControllerFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.done &&
+                    _isCameraReady) {
+                  return Center(child: _buildCameraPreview());
+                } else if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.white,
+                          size: 48,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Camera initialization failed',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                } else {
+                  return Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        theme.colorScheme.primary,
+                      ),
+                    ),
+                  );
+                }
+              },
+            ),
+          ),
+
+          // Updated Control Panel
           Container(
             padding: EdgeInsets.only(
-              top: MediaQuery.of(context).padding.top,
-              left: 8,
-              right: 8,
+              left: 32.0,
+              right: 32.0,
+              top: 24.0,
+              bottom: 24.0 + MediaQuery.of(context).padding.bottom,
             ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.arrow_back,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-          ),
-
-          // Camera Preview with 3:4 portrait aspect ratio
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              child: FutureBuilder<void>(
-                future: _initializeControllerFuture, // Now nullable
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.done &&
-                      _isCameraReady) {
-                    return Center(child: _buildCameraPreview());
-                  } else if (snapshot.hasError) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.error_outline,
-                            color: Colors.white,
-                            size: 48,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Camera initialization failed',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ],
-                      ),
-                    );
-                  } else {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    );
-                  }
-                },
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(32),
+                topRight: Radius.circular(32),
               ),
             ),
-          ),
-
-          // Control buttons
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20.0,
-              vertical: 30.0,
-            ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // Gallery button
-                GestureDetector(
-                  onTap: () => _pickImageFromGallery(context),
-                  child: Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white, width: 2),
-                      borderRadius: BorderRadius.circular(8),
+                IconButton(
+                  onPressed: () => _pickImageFromGallery(context),
+                  icon: Icon(
+                    Icons.photo_library_outlined,
+                    color: theme.colorScheme.primary,
+                    size: 32,
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor: theme.colorScheme.secondary.withOpacity(
+                      0.2,
                     ),
-                    child: const Icon(
-                      Icons.photo_library_outlined,
-                      color: Colors.white,
-                      size: 24,
-                    ),
+                    padding: const EdgeInsets.all(12),
                   ),
                 ),
 
-                // Capture button (camera shutter style)
+                // Capture button
                 GestureDetector(
                   onTap: _isCameraReady ? () => _captureImage(context) : null,
-                  child: Container(
-                    width: 70,
-                    height: 70,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 4),
-                    ),
+                  child: ScaleTransition(
+                    scale: _animationController,
                     child: Container(
-                      margin: const EdgeInsets.all(4),
+                      width: 80,
+                      height: 80,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: _isCameraReady ? Colors.white : Colors.grey,
+                        border: Border.all(
+                          color: theme.colorScheme.primary,
+                          width: 4,
+                        ),
+                      ),
+                      child: Container(
+                        margin: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color:
+                              _isCameraReady
+                                  ? theme.colorScheme.primary
+                                  : Colors.grey,
+                        ),
                       ),
                     ),
                   ),
                 ),
 
                 // Torch button
-                GestureDetector(
-                  onTap: _toggleTorch,
-                  child: Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: _isTorchOn ? Colors.amber : Colors.white,
-                        width: 2,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      _isTorchOn ? Icons.flash_on : Icons.flash_off,
-                      color: _isTorchOn ? Colors.amber : Colors.white,
-                      size: 24,
-                    ),
+                IconButton(
+                  onPressed: _toggleTorch,
+                  icon: Icon(
+                    _isTorchOn ? Icons.flash_on : Icons.flash_off,
+                    color:
+                        _isTorchOn ? Colors.amber : theme.colorScheme.primary,
+                    size: 32,
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor:
+                        _isTorchOn
+                            ? Colors.amber.withOpacity(0.2)
+                            : theme.colorScheme.secondary.withOpacity(0.2),
+                    padding: const EdgeInsets.all(12),
                   ),
                 ),
               ],
             ),
           ),
-
-          // Bottom safe area
-          SizedBox(height: MediaQuery.of(context).padding.bottom),
         ],
       ),
     );

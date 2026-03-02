@@ -1,39 +1,25 @@
-Maternal Health Monitoring App
+# Maternal Healthcare App 
 
-The Maternal Health Monitoring App is a mobile-first solution designed to enhance prenatal care. It enables real-time monitoring of vital signs such as ECG and BPM, while ensuring that all medical records are stored securely on a tamper-proof blockchain ledger. Sensitive files like ultrasound scans are stored in Supabase Cloud Storage, with only access links stored on-chain for efficiency and privacy.
+A comprehensive, dual-interface Flutter application designed to bridge the gap between expectant mothers and their healthcare providers. The app facilitates remote monitoring of maternal vitals and fetal health data, ensuring continuous care and timely medical interventions.
 
-This system helps both patients (continuous monitoring from home) and doctors (secure access to verified health records between visits).
+This repository serves as the software interface for the **Design and Implementation of a Frequency Generator for Fetal Heart Rate Detection** project. 
 
-How to Run
-1. Clone the Repository
-git clone https://github.com/your-username/maternal-health-app.git
-cd maternal-health-app
+## 🌟 Key Features
 
-2. Install Dependencies
-npm install
+### For Patients
+* **Secure Authentication:** Phone number verification via Firebase Auth.
+* **Personalized Dashboard:** View assigned consulting doctor and personal health profile.
+* **Real-Time Vitals Tracking:** Log and monitor Blood Pressure and Heart Rate.
+* **Fetal Data Monitoring:** Seamlessly record Fetal Heart Rate (FHR) readings.
 
+### For Doctors
+* **Whitelist Verification:** Secure onboarding requiring a valid Medical License ID to claim a profile.
+* **Patient Management:** Dedicated dashboard displaying only the patients explicitly assigned to the logged-in doctor.
+* **Remote Monitoring:** Direct access to real-time updates on patient vitals and fetal health histories.
 
-3. Configure Environment Variables
-
-Create a .env file in the project root:
-
-SUPABASE_URL=your_supabase_url
-SUPABASE_KEY=your_supabase_key
-ETHEREUM_NODE_URL=your_ethereum_node_url
-PRIVATE_KEY=your_wallet_private_key
-
-4. Start the Development Server
-npm start
-
-
-5. Build for Production
-npm run build
-
-
-Frontend: Flutter / React Native
-
-Backend: Node.js / Express
-
-Blockchain: Ethereum
-
-Storage: Supabase
+## 🛠 Tech Stack
+* **Frontend:** [Flutter](https://flutter.dev/) & Dart
+* **Backend (BaaS):** [Firebase](https://firebase.google.com/) (Migrated from Supabase)
+* **Authentication:** Firebase Phone Authentication (OTP)
+* **Database:** Cloud Firestore (NoSQL Document Database)
+* **State Management:** Provider pattern

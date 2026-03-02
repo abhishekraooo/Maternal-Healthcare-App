@@ -15,7 +15,6 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // Fetch the profile data when the screen is first loaded
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<DoctorDataProvider>(
         context,
@@ -24,39 +23,64 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
     });
   }
 
-  /// Shows a confirmation dialog before signing the doctor out.
-  Future<void> _showSignOutConfirmationDialog() async {
+  Future<void> _showSignOutConfirmationDialog(ThemeData theme) async {
     return showDialog<void>(
       context: context,
-      barrierDismissible: false, // User must tap a button
+      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Confirm Sign Out'),
-          content: const SingleChildScrollView(
-            child: ListBody(
-              children: <Widget>[Text('Are you sure you want to sign out?')],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            'Confirm Sign Out',
+            style: TextStyle(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.bold,
             ),
+          ),
+          content: const Text(
+            'Are you sure you want to securely sign out of your provider dashboard?',
           ),
           actions: <Widget>[
             TextButton(
-              child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.of(context).pop(); // Close the dialog
-              },
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              onPressed: () => Navigator.of(context).pop(),
             ),
-            FilledButton(
-              child: const Text('Sign Out'),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade50,
+                foregroundColor: Colors.red.shade700,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'Sign Out',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               onPressed: () async {
-                // Use the separate DoctorAuthService to sign out
-                await DoctorAuthService().signOut();
-                if (mounted) {
-                  // Navigate back to the very beginning of the app, clearing all routes
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                      builder: (_) => const RoleSelectionScreen(),
-                    ),
-                    (route) => false,
-                  );
+                Navigator.of(context).pop();
+                try {
+                  await DoctorAuthService().signOut();
+                  if (mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => const RoleSelectionScreen(),
+                      ),
+                      (route) => false,
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Sign out failed: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 }
               },
             ),
@@ -68,71 +92,259 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Doctor Profile'),
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        title: const Text(
+          'Doctor\'s Profile',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        foregroundColor: theme.colorScheme.primary,
+        centerTitle: false,
       ),
       body: Consumer<DoctorDataProvider>(
         builder: (context, provider, child) {
           if (provider.isLoadingProfile) {
-            return const Center(child: CircularProgressIndicator());
+            return Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  theme.colorScheme.primary,
+                ),
+              ),
+            );
           }
           if (provider.profile == null) {
-            return const Center(child: Text('Could not load profile data.'));
-          }
-          final profile = provider.profile!;
-          return RefreshIndicator(
-            onRefresh: () => provider.fetchDoctorProfile(),
-            child: ListView(
-              padding: const EdgeInsets.all(16.0),
-              children: [
-                // Profile Header
-                Center(
-                  child: Column(
-                    children: [
-                      const CircleAvatar(
-                        radius: 50,
-                        backgroundColor: Colors.blueAccent,
-                        child: Icon(
-                          Icons.medical_services_outlined,
-                          size: 60,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        profile.name,
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        'License ID: ${profile.licenseId}',
-                        style: Theme.of(
-                          context,
-                        ).textTheme.titleMedium?.copyWith(color: Colors.grey),
-                      ),
-                    ],
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 60,
+                    color: Colors.red.shade400,
                   ),
-                ),
-                const SizedBox(height: 40),
+                  const SizedBox(height: 16),
+                  const Text('Could not load profile data.'),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => provider.fetchDoctorProfile(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
 
-                // Sign Out Button
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Sign Out'),
-                  onPressed: _showSignOutConfirmationDialog,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red.shade50,
-                    foregroundColor: Colors.red.shade700,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+          final profile = provider.profile!;
+          final hasAvatar =
+              profile.avatar != null && profile.avatar!.isNotEmpty;
+
+          return RefreshIndicator(
+            color: theme.colorScheme.primary,
+            onRefresh: () => provider.fetchDoctorProfile(),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 600),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // --- Profile Header ---
+                        Center(
+                          child: Column(
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: theme.colorScheme.primary.withValues(
+                                      alpha: 0.2,
+                                    ),
+                                    width: 4,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: theme.colorScheme.primary
+                                          .withValues(alpha: 0.15),
+                                      blurRadius: 15,
+                                      offset: const Offset(0, 5),
+                                    ),
+                                  ],
+                                ),
+                                child: CircleAvatar(
+                                  radius: 55,
+                                  backgroundColor: theme.colorScheme.secondary
+                                      .withValues(alpha: 0.2),
+                                  backgroundImage:
+                                      hasAvatar
+                                          ? AssetImage(profile.avatar!)
+                                          : null,
+                                  child:
+                                      !hasAvatar
+                                          ? Icon(
+                                            Icons.medical_services_rounded,
+                                            size: 50,
+                                            color: theme.colorScheme.primary,
+                                          )
+                                          : null,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Text(
+                                profile.name,
+                                style: theme.textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.secondary.withValues(
+                                    alpha: 0.15,
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  profile.specialization ?? 'General Practice',
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 40),
+
+                        // --- Professional Details Section ---
+                        Text(
+                          'Professional Details',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Card(
+                          elevation: 2,
+                          shadowColor: Colors.black.withValues(alpha: 0.05),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(
+                              color: theme.colorScheme.secondary.withValues(
+                                alpha: 0.3,
+                              ),
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            child: Column(
+                              children: [
+                                ListTile(
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: theme.colorScheme.secondary
+                                          .withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Icon(
+                                      Icons.badge_outlined,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    'Medical License ID',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey.shade700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    profile.licenseId,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 40),
+
+                        // --- Sign Out Button ---
+                        // Inside DoctorProfileScreen Sign Out Dialog
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red.shade50,
+                            foregroundColor: Colors.red.shade700,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text(
+                            'Sign Out',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          onPressed: () async {
+                            // 1. Close Dialog
+                            Navigator.of(context).pop();
+
+                            try {
+                              // 2. Clear Provider Data (Important for security/UX)
+                              Provider.of<DoctorDataProvider>(
+                                context,
+                                listen: false,
+                              ).clearData();
+
+                              // 3. Sign out from Firebase
+                              await DoctorAuthService().signOut();
+
+                              // 4. Navigate to Role Selection and Clear Stack
+                              if (mounted) {
+                                Navigator.of(context).pushAndRemoveUntil(
+                                  MaterialPageRoute(
+                                    builder: (_) => const RoleSelectionScreen(),
+                                  ),
+                                  (route) => false,
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Sign out failed: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
           );
         },

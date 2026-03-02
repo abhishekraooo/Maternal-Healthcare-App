@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:maternalhealthcare/patient_side/provider/patient_provider.dart';
 
 class OvulationCalculatorPage extends StatefulWidget {
   const OvulationCalculatorPage({super.key});
@@ -10,6 +12,7 @@ class OvulationCalculatorPage extends StatefulWidget {
 }
 
 class _OvulationCalculatorPageState extends State<OvulationCalculatorPage> {
+  final TextEditingController _dateController = TextEditingController();
   DateTime? lastPeriodDate;
   int cycleLength = 28;
 
@@ -23,6 +26,30 @@ class _OvulationCalculatorPageState extends State<OvulationCalculatorPage> {
 
   final dateFormat = DateFormat("MMMM d, yyyy");
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<PatientDataProvider>(context, listen: false);
+      if (provider.cachedOvulationLmpDate != null) {
+        setState(() {
+          lastPeriodDate = provider.cachedOvulationLmpDate;
+          cycleLength = provider.cachedCycleLength;
+          _dateController.text = DateFormat(
+            'yyyy-MM-dd',
+          ).format(lastPeriodDate!);
+        });
+        calculate();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _dateController.dispose();
+    super.dispose();
+  }
+
   void calculate() {
     if (lastPeriodDate == null) return;
 
@@ -34,144 +61,343 @@ class _OvulationCalculatorPageState extends State<OvulationCalculatorPage> {
     dueDate = lastPeriodDate!.add(const Duration(days: 280));
 
     setState(() {});
+
+    if (mounted) {
+      Provider.of<PatientDataProvider>(
+        context,
+        listen: false,
+      ).saveOvulationCache(lastPeriodDate, cycleLength);
+    }
+  }
+
+  Future<void> _selectDate() async {
+    DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: lastPeriodDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
+      builder: (context, child) {
+        return Theme(data: Theme.of(context), child: child!);
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        lastPeriodDate = picked;
+        _dateController.text = DateFormat('yyyy-MM-dd').format(picked);
+      });
+      calculate();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Ovulation Calculator"),
-        backgroundColor: Colors.purple,
+        title: const Text(
+          "Cycle Tracker",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: theme.colorScheme.primary,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildInputSection(theme),
+                const SizedBox(height: 32),
+
+                if (ovulationDay != null) _buildResultsSection(theme),
+                if (ovulationDay != null) const SizedBox(height: 32),
+
+                _buildInfoSection(theme),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputSection(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: theme.colorScheme.secondary.withOpacity(0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            "Enter Your Details",
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          TextField(
+            controller: _dateController,
+            readOnly: true,
+            onTap: _selectDate,
+            decoration: InputDecoration(
+              labelText: 'First Day of Last Period',
+              hintText: 'YYYY-MM-DD',
+              prefixIcon: Icon(
+                Icons.water_drop_outlined,
+                color: theme.colorScheme.primary,
+              ),
+              filled: true,
+              fillColor: theme.colorScheme.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: theme.colorScheme.secondary),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: theme.colorScheme.secondary),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(
+                  color: theme.colorScheme.primary,
+                  width: 2,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          Text(
+            "Cycle Length: $cycleLength days",
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: theme.colorScheme.primary,
+              inactiveTrackColor: theme.colorScheme.secondary.withOpacity(0.5),
+              thumbColor: theme.colorScheme.primary,
+              overlayColor: theme.colorScheme.primary.withOpacity(0.2),
+              valueIndicatorColor: theme.colorScheme.primary,
+            ),
+            child: Slider(
+              value: cycleLength.toDouble(),
+              min: 21,
+              max: 35,
+              divisions: 14,
+              label: "$cycleLength",
+              onChanged: (val) {
+                setState(() {
+                  cycleLength = val.toInt();
+                });
+                if (lastPeriodDate != null) {
+                  calculate();
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildResultsSection(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          "Your Projections",
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.primary,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildInfoCard(
+          theme,
+          "Fertile Window",
+          "${dateFormat.format(fertileStart!)} - ${dateFormat.format(fertileEnd!)}",
+          Icons.favorite_border,
+        ),
+        _buildInfoCard(
+          theme,
+          "Approximate Ovulation",
+          dateFormat.format(ovulationDay!),
+          Icons.egg_outlined,
+        ),
+        _buildInfoCard(
+          theme,
+          "Next Period",
+          dateFormat.format(nextPeriod!),
+          Icons.water_drop_outlined,
+        ),
+        _buildInfoCard(
+          theme,
+          "Pregnancy Test Day",
+          dateFormat.format(pregnancyTestDay!),
+          Icons.medical_information_outlined,
+        ),
+        _buildInfoCard(
+          theme,
+          "Estimated Due Date",
+          dateFormat.format(dueDate!),
+          Icons.child_care_outlined,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoCard(
+    ThemeData theme,
+    String title,
+    String value,
+    IconData icon,
+  ) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 0,
+      color: theme.colorScheme.secondary.withOpacity(0.15),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+        child: Row(
           children: [
-            // Input Section
-            const Text("Enter Your Details",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-
-            // Last Period Picker
-            Row(
-              children: [
-                const Text("Last Period: ",
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                ElevatedButton(
-                  onPressed: () async {
-                    DateTime? picked = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2030),
-                    );
-                    if (picked != null) {
-                      setState(() {
-                        lastPeriodDate = picked;
-                      });
-                      calculate();
-                    }
-                  },
-                  child: Text(lastPeriodDate == null
-                      ? "Pick Date"
-                      : dateFormat.format(lastPeriodDate!)),
-                ),
-              ],
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: theme.colorScheme.primary, size: 20),
             ),
-            const SizedBox(height: 15),
-
-            // Cycle Length Input
-            Row(
-              children: [
-                const Text("Cycle Length: ",
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-                Expanded(
-                  child: Slider(
-                    value: cycleLength.toDouble(),
-                    min: 21,
-                    max: 35,
-                    divisions: 14,
-                    label: "$cycleLength days",
-                    onChanged: (val) {
-                      setState(() {
-                        cycleLength = val.toInt();
-                      });
-                      calculate();
-                    },
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: Colors.black54,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                    ),
                   ),
-                ),
-                Text("$cycleLength days"),
-              ],
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
             ),
-
-            const SizedBox(height: 25),
-
-            // Results Section
-            if (ovulationDay != null) ...[
-              _buildInfoCard("Fertile Window",
-                  "${dateFormat.format(fertileStart!)} - ${dateFormat.format(fertileEnd!)}", Colors.lightBlue),
-              _buildInfoCard("Approximate Ovulation",
-                  dateFormat.format(ovulationDay!), Colors.green),
-              _buildInfoCard(
-                  "Next Period", dateFormat.format(nextPeriod!), Colors.redAccent),
-              _buildInfoCard("Pregnancy Test Day",
-                  dateFormat.format(pregnancyTestDay!), Colors.orangeAccent),
-              _buildInfoCard("Estimated Due Date",
-                  dateFormat.format(dueDate!), Colors.purpleAccent),
-            ],
-
-            const SizedBox(height: 30),
-
-            // About Ovulation Section
-            const Text("About Ovulation",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            const Text("Common signs of ovulation include:",
-                style: TextStyle(fontSize: 16)),
-            const SizedBox(height: 10),
-            _buildBulletPoint(
-                "Rise in basal body temperature (0.5 to 1°F), measured with a thermometer."),
-            _buildBulletPoint(
-                "Higher levels of luteinizing hormone (LH), detected by a home ovulation kit."),
-            _buildBulletPoint(
-                "Cervical mucus may become clear, thin, and stretchy (like raw egg whites)."),
-            _buildBulletPoint("Breast tenderness."),
-            _buildBulletPoint("Bloating."),
-            _buildBulletPoint("Spotting."),
-            _buildBulletPoint("Slight pain or cramping in your side."),
           ],
         ),
       ),
     );
   }
 
-  // Card Builder
-  Widget _buildInfoCard(String title, String value, Color color) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: color.withOpacity(0.2),
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: ListTile(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        trailing: Text(value,
-            style: TextStyle(
-                color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+  Widget _buildInfoSection(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: theme.colorScheme.secondary.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.lightbulb_outline, color: theme.colorScheme.primary),
+              const SizedBox(width: 12),
+              Text(
+                "About Ovulation",
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const SizedBox(height: 16),
+          Text(
+            "Common signs of ovulation include:",
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildBulletPoint(
+            theme,
+            "Rise in basal body temperature (0.5 to 1°F), measured with a thermometer.",
+          ),
+          _buildBulletPoint(
+            theme,
+            "Higher levels of luteinizing hormone (LH), detected by a home ovulation kit.",
+          ),
+          _buildBulletPoint(
+            theme,
+            "Cervical mucus may become clear, thin, and stretchy (like raw egg whites).",
+          ),
+          _buildBulletPoint(theme, "Breast tenderness or bloating."),
+          _buildBulletPoint(theme, "Slight pain or cramping in your side."),
+        ],
       ),
     );
   }
 
-  // Bullet Point Builder
-  Widget _buildBulletPoint(String text) {
+  Widget _buildBulletPoint(ThemeData theme, String text) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.only(bottom: 8.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("• ", style: TextStyle(fontSize: 18)),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 15))),
+          Text(
+            "• ",
+            style: TextStyle(
+              fontSize: 18,
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.black87,
+                height: 1.4,
+              ),
+            ),
+          ),
         ],
       ),
     );

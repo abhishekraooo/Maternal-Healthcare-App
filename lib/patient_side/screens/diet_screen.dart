@@ -1,21 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:provider/provider.dart';
+import 'package:maternalhealthcare/patient_side/provider/patient_provider.dart';
 
-// Data model remains the same
+// Data model
 class DietSuggestion {
   final String name;
   final String quantity;
   final String description;
+
   DietSuggestion({
     required this.name,
     required this.quantity,
     required this.description,
   });
 
-  // Factory constructor to create a DietSuggestion from JSON
   factory DietSuggestion.fromJson(Map<String, dynamic> json) {
     return DietSuggestion(
       name: json['name'] ?? 'No Name',
@@ -42,6 +43,23 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
   String? _errorMessage;
 
   @override
+  void initState() {
+    super.initState();
+    // Load cached data from the Provider when the screen initializes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<PatientDataProvider>(context, listen: false);
+      if (provider.cachedDietSuggestions.isNotEmpty) {
+        setState(() {
+          _monthController.text = provider.cachedDietMonth;
+          _weightController.text = provider.cachedDietWeight;
+          // Cast the cached dynamic list back to DietSuggestion
+          _suggestions = provider.cachedDietSuggestions.cast<DietSuggestion>();
+        });
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _monthController.dispose();
     _weightController.dispose();
@@ -52,6 +70,7 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
   Future<void> _getDietSuggestions() async {
     if (_formKey.currentState!.validate()) {
       final int month = int.tryParse(_monthController.text) ?? 0;
+      final String weight = _weightController.text;
 
       setState(() {
         _isLoading = true;
@@ -61,9 +80,18 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
 
       try {
         final fetchedSuggestions = await _fetchSuggestionsFromGemini(month);
+
         setState(() {
           _suggestions = fetchedSuggestions;
         });
+
+        // Save the successful fetch to our global provider cache
+        if (mounted) {
+          Provider.of<PatientDataProvider>(
+            context,
+            listen: false,
+          ).saveDietCache(fetchedSuggestions, _monthController.text, weight);
+        }
       } catch (e) {
         setState(() {
           _errorMessage = "Error: ${e.toString()}";
@@ -78,7 +106,6 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
     }
   }
 
-  /// Fetches diet suggestions from the Gemini API.
   Future<List<DietSuggestion>> _fetchSuggestionsFromGemini(int month) async {
     final apiKey = dotenv.env['GEMINI_API_KEY'];
     if (apiKey == null) {
@@ -86,10 +113,9 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
     }
 
     final url = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=$apiKey',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=$apiKey',
     );
 
-    // The prompt is engineered to request a specific JSON format
     final String prompt = '''
     You are a pregnancy nutrition expert. Your knowledge is based STRICTLY on guidelines from healthychildren.org (American Academy of Pediatrics).
     For month $month of pregnancy, provide 5 distinct dietary suggestions focusing on key nutrients for that stage.
@@ -108,7 +134,6 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
             ],
           },
         ],
-        // Adding generation config to ask for JSON output
         'generationConfig': {"responseMimeType": "application/json"},
       }),
     );
@@ -130,57 +155,73 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        // --- MODIFIED HERE ---
-        title: Text(
+        title: const Text(
           'Pregnancy Diet Guide',
-          style: GoogleFonts.quicksand(
-            color: Colors.white,
-          ), // Set text color to white
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.black, // Set background to black
-        iconTheme: const IconThemeData(
-          color: Colors.white, // Ensure the back arrow is white
-        ),
-        // --- END OF MODIFICATION ---
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: theme.colorScheme.primary,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildInputForm(),
-            const SizedBox(height: 30),
-            if (_isLoading) const Center(child: CircularProgressIndicator()),
-            if (_errorMessage != null)
-              Center(
-                child: Text(
-                  _errorMessage!,
-                  style: const TextStyle(color: Colors.red),
-                ),
-              ),
-            if (_suggestions.isNotEmpty) _buildResultsSection(),
-          ],
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildInputForm(theme),
+                const SizedBox(height: 32),
+                if (_isLoading)
+                  Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                if (_errorMessage != null)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(color: Colors.red.shade800),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                if (_suggestions.isNotEmpty) _buildResultsSection(theme),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  // --- UI WIDGETS ---
-  Widget _buildInputForm() {
+  Widget _buildInputForm(ThemeData theme) {
     return Form(
       key: _formKey,
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(15),
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
+              color: theme.colorScheme.secondary.withOpacity(0.4),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
@@ -190,19 +231,18 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
             Text(
               "Tell Us About Your Pregnancy",
               textAlign: TextAlign.center,
-              style: GoogleFonts.quicksand(
-                fontSize: 22,
+              style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: Colors.black,
+                color: theme.colorScheme.primary,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             TextFormField(
               controller: _monthController,
-              decoration: const InputDecoration(
-                labelText: 'Current Month of Pregnancy (1-9)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.calendar_today),
+              decoration: _buildInputDecoration(
+                theme,
+                'Current Month (1-9)',
+                Icons.calendar_today,
               ),
               keyboardType: TextInputType.number,
               validator: (value) {
@@ -219,10 +259,10 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _weightController,
-              decoration: const InputDecoration(
-                labelText: 'Pre-Pregnancy Weight (in kg)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.monitor_weight),
+              decoration: _buildInputDecoration(
+                theme,
+                'Pre-Pregnancy Weight (kg)',
+                Icons.monitor_weight_outlined,
               ),
               keyboardType: TextInputType.number,
               validator:
@@ -235,19 +275,11 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
             ElevatedButton(
               onPressed: _isLoading ? null : _getDietSuggestions,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
               ),
-              child: Text(
+              child: const Text(
                 'Get Suggestions',
-                style: GoogleFonts.quicksand(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ],
@@ -256,86 +288,128 @@ class _PatientDietScreenState extends State<PatientDietScreen> {
     );
   }
 
-  Widget _buildResultsSection() {
+  Widget _buildResultsSection(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           "Your Daily Suggestions",
-          style: GoogleFonts.quicksand(
-            fontSize: 24,
+          style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.bold,
-            color: Colors.pink[800],
+            color: theme.colorScheme.primary,
           ),
         ),
         const SizedBox(height: 16),
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.amber[50],
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.amber[200]!),
+            color: theme.colorScheme.secondary.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.colorScheme.secondary),
           ),
-          child: Text(
-            '⚠ Disclaimer: These AI-generated suggestions are for informational purposes. Always consult your healthcare provider for personalized medical advice.',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.quicksand(
-              color: Colors.amber[800],
-              fontWeight: FontWeight.w600,
-            ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'These AI-generated suggestions are for informational purposes. Always consult your healthcare provider for personalized medical advice.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
         ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: _suggestions.length,
           itemBuilder: (context, index) {
-            return _buildSuggestionCard(_suggestions[index]);
+            return _buildSuggestionCard(theme, _suggestions[index]);
           },
         ),
       ],
     );
   }
 
-  Widget _buildSuggestionCard(DietSuggestion suggestion) {
+  Widget _buildSuggestionCard(ThemeData theme, DietSuggestion suggestion) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      elevation: 3,
-      shadowColor: Colors.pink.withOpacity(0.2),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 20.0),
+        padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               suggestion.name,
-              style: GoogleFonts.quicksand(
-                fontSize: 18,
+              style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
+                color: theme.colorScheme.primary,
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              "Recommended: ${suggestion.quantity}",
-              style: GoogleFonts.quicksand(
-                fontSize: 15,
-                color: Colors.black54,
-                fontWeight: FontWeight.w600,
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.secondary.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                "Recommended: ${suggestion.quantity}",
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-            const Divider(height: 20, thickness: 0.5),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Divider(height: 1, thickness: 1),
+            ),
             Text(
               suggestion.description,
-              style: GoogleFonts.quicksand(
-                fontSize: 14,
-                color: Colors.grey[700],
-                height: 1.4,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: Colors.black87,
+                height: 1.5,
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  InputDecoration _buildInputDecoration(
+    ThemeData theme,
+    String label,
+    IconData icon,
+  ) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: theme.colorScheme.primary),
+      filled: true,
+      fillColor: theme.colorScheme.surface,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: theme.colorScheme.secondary),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: theme.colorScheme.secondary),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
       ),
     );
   }

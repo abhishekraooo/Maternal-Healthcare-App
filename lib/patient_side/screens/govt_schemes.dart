@@ -1,14 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-@override
-Widget build(BuildContext context) {
-  return MaterialApp(
-    title: 'Government Schemes',
-    theme: ThemeData(primarySwatch: Colors.amber, useMaterial3: true),
-    home: const GovtSchemes(),
-  );
-}
+import 'package:provider/provider.dart';
+import 'package:maternalhealthcare/patient_side/provider/patient_provider.dart';
 
 class GovtSchemes extends StatefulWidget {
   const GovtSchemes({super.key});
@@ -22,7 +15,36 @@ class _GovtSchemesState extends State<GovtSchemes> {
   int? selectedMonth;
   String? selectedResourceType;
 
-  // Resource types and their URLs for each month
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<PatientDataProvider>(context, listen: false);
+      if (provider.cachedGovtOption != null) {
+        setState(() {
+          selectedOption = provider.cachedGovtOption;
+          selectedMonth = provider.cachedGovtMonth;
+          selectedResourceType = provider.cachedGovtResource;
+        });
+      }
+    });
+  }
+
+  void _updateState(String? option, int? month, String? resource) {
+    setState(() {
+      selectedOption = option;
+      selectedMonth = month;
+      selectedResourceType = resource;
+    });
+    if (mounted) {
+      Provider.of<PatientDataProvider>(
+        context,
+        listen: false,
+      ).saveGovtSchemesCache(option, month, resource);
+    }
+  }
+
+  // Data maps remain identical
   final Map<String, Map<String, String>> pregnancyResources = {
     '1': {
       'Pradhan Mantri Mathru Vandhana':
@@ -30,7 +52,7 @@ class _GovtSchemesState extends State<GovtSchemes> {
       'Janani Suraksha':
           'https://www.nhm.gov.in/index1.php?lang=1&level=3&sublinkid=841&lid=309',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
     },
     '2': {
       'Pradhan Mantri Mathru Vandhana':
@@ -38,7 +60,7 @@ class _GovtSchemesState extends State<GovtSchemes> {
       'Janani Suraksha':
           'https://www.nhm.gov.in/index1.php?lang=1&level=3&sublinkid=841&lid=309',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
     },
     '3': {
       'Pradhan Mantri Mathru Vandhana':
@@ -46,7 +68,7 @@ class _GovtSchemesState extends State<GovtSchemes> {
       'Janani Suraksha':
           'https://www.nhm.gov.in/index1.php?lang=1&level=3&sublinkid=841&lid=309',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
     },
     '4': {
       'Pradhan Mantri Mathru Vandhana':
@@ -54,7 +76,7 @@ class _GovtSchemesState extends State<GovtSchemes> {
       'Janani Suraksha':
           'https://www.nhm.gov.in/index1.php?lang=1&level=3&sublinkid=841&lid=309',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
     },
     '5': {
       'Pradhan Mantri Mathru Vandhana':
@@ -62,7 +84,7 @@ class _GovtSchemesState extends State<GovtSchemes> {
       'Janani Suraksha':
           'https://www.nhm.gov.in/index1.php?lang=1&level=3&sublinkid=841&lid=309',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
     },
     '6': {
       'Pradhan Mantri Mathru Vandhana':
@@ -70,8 +92,8 @@ class _GovtSchemesState extends State<GovtSchemes> {
       'Janani Suraksha':
           'https://www.nhm.gov.in/index1.php?lang=1&level=3&sublinkid=841&lid=309',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
-      'thayi bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
+      'Thayi Bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
     },
     '7': {
       'Pradhan Mantri Mathru Vandhana':
@@ -79,8 +101,8 @@ class _GovtSchemesState extends State<GovtSchemes> {
       'Janani Suraksha':
           'https://www.nhm.gov.in/index1.php?lang=1&level=3&sublinkid=841&lid=309',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
-      'thayi bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
+      'Thayi Bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
     },
     '8': {
       'Pradhan Mantri Mathru Vandhana':
@@ -88,10 +110,10 @@ class _GovtSchemesState extends State<GovtSchemes> {
       'Janani Suraksha':
           'https://www.nhm.gov.in/index1.php?lang=1&level=3&sublinkid=841&lid=309',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
-      'prasoothi araike':
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
+      'Prasoothi Araike':
           'https://studybizz.com/karnataka-prasoothi-araika-scheme.html',
-      'thayi bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
+      'Thayi Bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
     },
     '9': {
       'Pradhan Mantri Mathru Vandhana':
@@ -99,104 +121,92 @@ class _GovtSchemesState extends State<GovtSchemes> {
       'Janani Suraksha':
           'https://www.nhm.gov.in/index1.php?lang=1&level=3&sublinkid=841&lid=309',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
       'Prasoothi Araike':
           'https://studybizz.com/karnataka-prasoothi-araika-scheme.html',
-      'thayi bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
+      'Thayi Bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
     },
   };
 
   final Map<String, Map<String, String>> infantResources = {
     '1': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'thayi bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
+      'Thayi Bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
     },
     '2': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
       'Janani Shishu Suraksha': 'https://www.myscheme.gov.in/schemes/jssk',
-      'thayi bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
+      'Thayi Bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
     },
     '3': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
-      'thayi bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
+      'Thayi Bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
     },
     '4': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
-      'thayi bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
+      'Thayi Bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
     },
     '5': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
-      'thayi bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
+      'Thayi Bhagya': 'https://www.myscheme.gov.in/schemes/thayi-bhagya',
     },
     '6': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
     },
     '7': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
     },
     '8': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
     },
     '9': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
     },
     '10': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
     },
     '11': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
     },
     '12': {
-      'Integrated child development services scheme':
-          'https://icds.gov.in/en/about-us',
-      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/ ',
+      'ICDS Scheme': 'https://icds.gov.in/en/about-us',
+      'Roshan Abhiyan': 'https://poshanabhiyaan.gov.in/',
       'Mathru Poorna':
           'https://yuvakanaja.in/healthfamily-welfare-dept-en/matru-poorna-scheme/',
     },
@@ -204,133 +214,194 @@ class _GovtSchemesState extends State<GovtSchemes> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Baby Care Resources'),
-        centerTitle: true,
+        title: const Text(
+          'Govt Schemes & Resources',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: theme.colorScheme.primary,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Select your current stage:',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Select your current stage',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 20),
 
-            // Pregnancy Option
-            _buildOptionCard(
-              title: 'Pregnancy Resources',
-              description: 'I am currently pregnant',
-              value: 'pregnancy',
-            ),
+                // Options Section
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildOptionCard(
+                        theme: theme,
+                        title: 'Pregnancy',
+                        icon: Icons.pregnant_woman,
+                        value: 'pregnancy',
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildOptionCard(
+                        theme: theme,
+                        title: 'Infant Care',
+                        icon: Icons.child_care,
+                        value: 'infant',
+                      ),
+                    ),
+                  ],
+                ),
 
-            if (selectedOption == 'pregnancy') ...[
-              const SizedBox(height: 16),
-              _buildMonthSelector(max: 9, isPregnancy: true),
-            ],
+                if (selectedOption != null) ...[
+                  const SizedBox(height: 32),
+                  _buildMonthSelector(
+                    theme: theme,
+                    max: selectedOption == 'pregnancy' ? 9 : 12,
+                  ),
+                ],
 
-            const SizedBox(height: 16),
-
-            // Infant Care Option
-            _buildOptionCard(
-              title: 'Infant Care Resources',
-              description: 'I have already delivered my baby',
-              value: 'infant',
-            ),
-
-            if (selectedOption == 'infant') ...[
-              const SizedBox(height: 16),
-              _buildMonthSelector(max: 12, isPregnancy: false),
-            ],
-
-            if (selectedMonth != null) ...[
-              const SizedBox(height: 12),
-              _buildResourceDropdown(),
-              if (selectedResourceType != null) ...[
-                const SizedBox(height: 16),
-                _buildUrlPreview(),
+                if (selectedMonth != null) ...[
+                  const SizedBox(height: 32),
+                  _buildResourceDropdown(theme),
+                  if (selectedResourceType != null) ...[
+                    const SizedBox(height: 16),
+                    _buildUrlPreview(theme),
+                  ],
+                ],
               ],
-            ],
-          ],
+            ),
+          ),
         ),
       ),
     );
   }
 
   Widget _buildOptionCard({
+    required ThemeData theme,
     required String title,
-    required String description,
+    required IconData icon,
     required String value,
   }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(
-          color: selectedOption == value ? Colors.pink : Colors.grey.shade300,
-          width: 2,
+    final isSelected = selectedOption == value;
+
+    return GestureDetector(
+      onTap: () {
+        _updateState(value, null, null);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color:
+              isSelected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color:
+                isSelected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.secondary.withOpacity(0.5),
+            width: 2,
+          ),
+          boxShadow: [
+            if (isSelected)
+              BoxShadow(
+                color: theme.colorScheme.primary.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+          ],
         ),
-      ),
-      child: RadioListTile<String>(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(description),
-        value: value,
-        groupValue: selectedOption,
-        onChanged: (String? value) {
-          setState(() {
-            selectedOption = value;
-            selectedMonth = null;
-            selectedResourceType = null;
-          });
-        },
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 40,
+              color:
+                  isSelected
+                      ? theme.colorScheme.surface
+                      : theme.colorScheme.primary,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color:
+                    isSelected
+                        ? theme.colorScheme.surface
+                        : theme.colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildMonthSelector({required int max, required bool isPregnancy}) {
+  Widget _buildMonthSelector({required ThemeData theme, required int max}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Select month:',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        Text(
+          selectedOption == 'pregnancy'
+              ? 'Select Pregnancy Month'
+              : 'Select Infant Age (Months)',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.primary,
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 3,
-            childAspectRatio: 1.5,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
+            childAspectRatio: 2.0,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
           ),
           itemCount: max,
           itemBuilder: (context, index) {
             final month = index + 1;
+            final isSelected = selectedMonth == month;
+
             return GestureDetector(
               onTap: () {
-                setState(() {
-                  selectedMonth = month;
-                  selectedResourceType = null;
-                });
+                _updateState(selectedOption, month, null);
               },
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
                 decoration: BoxDecoration(
                   color:
-                      selectedMonth == month
-                          ? Colors.pink[100]
-                          : Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
+                      isSelected
+                          ? theme.colorScheme.secondary.withOpacity(0.3)
+                          : theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color:
-                        selectedMonth == month
-                            ? Colors.pink
-                            : Colors.transparent,
-                    width: 2,
+                        isSelected
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.secondary.withOpacity(0.5),
+                    width: isSelected ? 2 : 1,
                   ),
                 ),
                 child: Center(
@@ -338,13 +409,11 @@ class _GovtSchemesState extends State<GovtSchemes> {
                     'Month $month',
                     style: TextStyle(
                       fontWeight:
-                          selectedMonth == month
-                              ? FontWeight.bold
-                              : FontWeight.normal,
+                          isSelected ? FontWeight.bold : FontWeight.w600,
                       color:
-                          selectedMonth == month
-                              ? Colors.pink[800]
-                              : Colors.black,
+                          isSelected
+                              ? theme.colorScheme.primary
+                              : Colors.black87,
                     ),
                   ),
                 ),
@@ -356,49 +425,87 @@ class _GovtSchemesState extends State<GovtSchemes> {
     );
   }
 
-  Widget _buildResourceDropdown() {
+  Widget _buildResourceDropdown(ThemeData theme) {
     final resources =
         selectedOption == 'pregnancy'
             ? pregnancyResources[selectedMonth.toString()]
             : infantResources[selectedMonth.toString()];
 
     if (resources == null || resources.isEmpty) {
-      return const Text('No resources available for this month');
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.secondary.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text('No resources available for this timeframe.'),
+      );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Select resource type:',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        Text(
+          'Available Schemes & Resources',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: theme.colorScheme.primary,
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           value: selectedResourceType,
+          isExpanded: true,
           decoration: InputDecoration(
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+            filled: true,
+            fillColor: theme.colorScheme.surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: theme.colorScheme.secondary),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: theme.colorScheme.secondary),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: theme.colorScheme.primary,
+                width: 2,
+              ),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 16,
+            ),
           ),
           items:
               resources.keys.map((String key) {
-                return DropdownMenuItem<String>(value: key, child: Text(key));
+                return DropdownMenuItem<String>(
+                  value: key,
+                  child: Text(
+                    key,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
               }).toList(),
-          onChanged: (String? newValue) async {
-            if (newValue != null && resources[newValue] != null) {
-              setState(() {
-                selectedResourceType = newValue;
-              });
-              await _launchUrl(resources[newValue]!);
+          onChanged: (String? newValue) {
+            if (newValue != null) {
+              _updateState(selectedOption, selectedMonth, newValue);
             }
           },
-          hint: const Text('Choose a resource'),
+          hint: const Text('Tap to view schemes'),
+          icon: Icon(
+            Icons.arrow_drop_down_circle_outlined,
+            color: theme.colorScheme.primary,
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildUrlPreview() {
+  Widget _buildUrlPreview(ThemeData theme) {
     final resources =
         selectedOption == 'pregnancy'
             ? pregnancyResources[selectedMonth.toString()]
@@ -406,33 +513,80 @@ class _GovtSchemesState extends State<GovtSchemes> {
 
     final url = resources?[selectedResourceType];
 
-    if (url == null) return Container();
+    if (url == null) return const SizedBox.shrink();
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Selected: $selectedResourceType',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondary.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: theme.colorScheme.secondary.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.launch_outlined,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  selectedResourceType!,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Tap the button below to visit the official government portal for more information and application details.',
+            style: theme.textTheme.bodyMedium?.copyWith(color: Colors.black87),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => _launchUrl(url),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'Open Official Portal',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
             ),
-            const SizedBox(height: 8),
-            SelectableText(url, style: const TextStyle(color: Colors.blue)),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Future<void> _launchUrl(String url) async {
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(Uri.parse(url));
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      ); // Better for opening external websites
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not launch: $url')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Could not launch the portal.'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
     }
   }
 }
