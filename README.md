@@ -231,4 +231,6 @@ Optimized with:
 
 ---
 
-GitHub: https://github.com/abhishekraooo
+- GitHub: https://github.com/abhishekraooo
+- Demo Video: https://youtu.be/fEQL_S_VhvM
+- APK File download: https://drive.google.com/file/d/1PifzWNZq39vxrenknZEZ_0UDgN7edr2P/view?usp=sharing
