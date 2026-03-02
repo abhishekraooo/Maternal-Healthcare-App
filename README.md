@@ -135,13 +135,13 @@ Firestore security ensures:
 ## Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/maternalhealthcare_app.git
+git clone https://github.com/abhishekraooo/Maternal-Healthcare-App.git
 ```
 
 ## Navigate to Project
 
 ```bash
-cd maternalhealthcare_app
+cd Maternal-Healthcare-App
 ```
 
 ## Install Dependencies
